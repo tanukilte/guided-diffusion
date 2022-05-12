@@ -872,7 +872,7 @@ class GaussianDiffusion:
             init_image = th.zeros_like(img)
 
         indices = list(range(self.num_timesteps - skip_timesteps))[::-1]
-        transformation_steps = [int(len(indices)*i) for i in transformation_percent]
+        transformation_steps = [int(len(indices)*(1-i)) for i in transformation_percent]
 
         if init_image is not None:
             my_t = th.ones([shape[0]], device=device, dtype=th.long) * indices[0]
