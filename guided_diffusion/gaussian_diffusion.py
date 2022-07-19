@@ -656,6 +656,7 @@ class GaussianDiffusion:
         cond_fn=None,
         model_kwargs=None,
         eta=0.0,
+        dynamicThreshold=1.0
     ):
         """
         Sample x_{t-1} from the model using DDIM.
@@ -696,7 +697,11 @@ class GaussianDiffusion:
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         sample = mean_pred + nonzero_mask * sigma * noise
-        return {"sample": sample, "pred_xstart": out_orig["pred_xstart"]}
+        #MOD: dynamic thresholding from Google IMAGEN paper with added schedule, more or less
+        workTen = out_orig["pred_xstart"].detach()
+        workTen = workTen.div(max(((((workTen.max() - workTen.min() / 2) - 1) / 2) + 1) * dynamicThreshold, 1.0)).clamp(min=-1, max=1)
+        #workTen = workTen.div(max(workTen.min() * -dynamicThreshold, workTen.max(), 1.0))
+        return {"sample": sample, "pred_xstart": workTen}
 
     def ddim_sample_with_grad(
         self,
@@ -708,6 +713,7 @@ class GaussianDiffusion:
         cond_fn=None,
         model_kwargs=None,
         eta=0.0,
+        dynamicThreshold=1.0
     ):
         """
         Sample x_{t-1} from the model using DDIM.
@@ -753,7 +759,11 @@ class GaussianDiffusion:
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         sample = mean_pred + nonzero_mask * sigma * noise
-        return {"sample": sample, "pred_xstart": out_orig["pred_xstart"].detach()}
+        #MOD: dynamic thresholding from Google IMAGEN paper with added schedule, more or less
+        workTen = out_orig["pred_xstart"].detach()
+        workTen = workTen.div(max(((((workTen.max() - workTen.min() / 2) - 1) / 2) + 1) * dynamicThreshold, 1.0)).clamp(min=-1, max=1)
+        #workTen = workTen.div(max(workTen.min() * -dynamicThreshold, workTen.max(), 1.0))
+        return {"sample": sample, "pred_xstart": workTen}
 
     def ddim_reverse_sample(
         self,
@@ -846,7 +856,7 @@ class GaussianDiffusion:
         model_kwargs=None,
         device=None,
         progress=False,
-        eta=0.0,
+        eta=[0.0 for i in range(1000)],
         skip_timesteps=0,
         init_image=None,
         randomize_class=False,
@@ -883,7 +893,7 @@ class GaussianDiffusion:
             from tqdm.auto import tqdm
 
             indices = tqdm(indices)
-
+        dynamicThreshold = [1.0 - i * 0.0001 * 0 for i in range(1000)]
         for i in indices:
             t = th.tensor([i] * shape[0], device=device)
             if randomize_class and 'y' in model_kwargs:
@@ -892,7 +902,8 @@ class GaussianDiffusion:
                                                device=model_kwargs['y'].device)
             with th.no_grad():
                 if i in transformation_steps and transformation_fn is not None:
-                  img = transformation_fn(img)
+                    img = transformation_fn(img)
+                stepsToAbs = int((self.num_timesteps - i - 1) * (1000.0 / self.num_timesteps))
                 sample_fn = self.ddim_sample_with_grad if cond_fn_with_grad else self.ddim_sample
                 out = sample_fn(
                     model,
@@ -902,7 +913,8 @@ class GaussianDiffusion:
                     denoised_fn=denoised_fn,
                     cond_fn=cond_fn,
                     model_kwargs=model_kwargs,
-                    eta=eta,
+                    eta=eta[stepsToAbs],
+                    dynamicThreshold=dynamicThreshold[stepsToAbs]
                 )
                 yield out
                 img = out["sample"]
