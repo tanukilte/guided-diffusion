@@ -699,7 +699,8 @@ class GaussianDiffusion:
         sample = mean_pred + nonzero_mask * sigma * noise
         #MOD: dynamic thresholding from Google IMAGEN paper with added schedule, more or less
         workTen = out_orig["pred_xstart"].detach()
-        workTen = workTen.div(max(((((workTen.max() - workTen.min() / 2) - 1) / 2) + 1) * dynamicThreshold, 1.0)).clamp(min=-1, max=1)
+        #workTen = workTen.div(max(((((workTen.max() - workTen.min() / 2) - 1) / 2) + 1) * dynamicThreshold, 1.0))#.clamp(min=-1, max=1)
+        workTen = workTen.div(max(max(workTen.max(),abs(workTen.min())) * dynamicThreshold, 1.0))
         #workTen = workTen.div(max(workTen.min() * -dynamicThreshold, workTen.max(), 1.0))
         return {"sample": sample, "pred_xstart": workTen}
 
@@ -761,7 +762,8 @@ class GaussianDiffusion:
         sample = mean_pred + nonzero_mask * sigma * noise
         #MOD: dynamic thresholding from Google IMAGEN paper with added schedule, more or less
         workTen = out_orig["pred_xstart"].detach()
-        workTen = workTen.div(max(((((workTen.max() - workTen.min() / 2) - 1) / 2) + 1) * dynamicThreshold, 1.0)).clamp(min=-1, max=1)
+        #workTen = workTen.div(max(((((workTen.max() - workTen.min() / 2) - 1) / 2) + 1) * dynamicThreshold, 1.0))#.clamp(min=-1, max=1)
+        workTen = workTen.div(max(max(workTen.max(),abs(workTen.min())) * dynamicThreshold, 1.0))
         #workTen = workTen.div(max(workTen.min() * -dynamicThreshold, workTen.max(), 1.0))
         return {"sample": sample, "pred_xstart": workTen}
 
@@ -857,6 +859,7 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         eta=[0.0 for i in range(1000)],
+        dynamicThreshold=[i * 0.001 for i in range(1000)],
         skip_timesteps=0,
         init_image=None,
         randomize_class=False,
@@ -893,7 +896,7 @@ class GaussianDiffusion:
             from tqdm.auto import tqdm
 
             indices = tqdm(indices)
-        dynamicThreshold = [1.0 - i * 0.0001 * 0 for i in range(1000)]
+        
         for i in indices:
             t = th.tensor([i] * shape[0], device=device)
             if randomize_class and 'y' in model_kwargs:
